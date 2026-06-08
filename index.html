@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Governa Lagoa — Processo Estrutural com Mapa Interativo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+body { background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); color: #0c4a6e; min-height: 100vh; padding: 1rem; }
+.container { max-width: 1400px; margin: 0 auto; }
+.screen { display: none; }
+.screen.active { display: block; }
+
+.intro-card {
+    background: white; border-radius: 2rem; padding: 2rem; margin-bottom: 1.5rem;
+    box-shadow: 0 20px 35px -10px rgba(0,0,0,0.15); border-left: 6px solid #0ea5e9;
+}
+.intro-card h1 { color: #0284c7; text-align: center; font-size: 2.5rem; margin-bottom: 0.3rem; }
+.intro-card .sub { text-align: center; color: #475569; font-style: italic; margin-bottom: 1.5rem; }
+.intro-card h2 { color: #0369a1; margin-bottom: 1rem; font-size: 1.4rem; }
+.intro-card p { line-height: 1.6; margin-bottom: 0.8rem; color: #334155; }
+
+.personas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; }
+.persona-card {
+    background: #f8fafc; border: 3px solid #cbd5e1; border-radius: 1rem; padding: 1.2rem;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+}
+.persona-card:hover { border-color: #0284c7; transform: translateY(-3px); }
+.persona-card.selected { border-color: #0284c7; background: #f0f9ff; box-shadow: 0 8px 20px rgba(2,132,199,0.25); }
+.persona-card .emoji { font-size: 3rem; }
+.persona-card h3 { color: #0369a1; margin: 0.5rem 0; font-size: 1.15rem; }
+.persona-card p { font-size: 0.85rem; color: #475569; margin: 0; }
+
+.selection-status {
+    background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 0.5rem;
+    padding: 0.8rem 1rem; margin-top: 1rem; font-size: 0.9rem; color: #78350f;
+    display: none;
+}
+.selection-status.show { display: block; }
+.selection-status.success { background: #dcfce7; border-color: #16a34a; color: #166534; }
+
+.rules-list { list-style: none; padding: 0; }
+.rules-list li { padding: 0.6rem 0 0.6rem 2rem; position: relative; line-height: 1.5; }
+.rules-list li::before { content: "🎲"; position: absolute; left: 0; }
+
+.btn-primary {
+    background: #0284c7; color: white; border: none; padding: 1rem 2rem;
+    font-size: 1.2rem; font-weight: bold; border-radius: 3rem; cursor: pointer;
+    width: 100%; transition: 0.2s; margin-top: 1rem;
+}
+.btn-primary:hover { background: #0369a1; transform: scale(1.02); }
+
+/* ===== LAYOUT DO JOGO COM MAPA ===== */
+.game-layout {
+    display: grid;
+    grid-template-columns: 1fr 450px;
+    gap: 1.5rem;
+}
+
+.game-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.game-header {
+    background: white; border-radius: 1.5rem; padding: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+}
+.round-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.round-info .round-title { color: #0284c7; font-size: 1.3rem; font-weight: bold; }
+.round-info .round-period { color: #64748b; font-size: 0.95rem; }
+.round-info .persona-badge {
+    background: #0ea5e9; color: white; padding: 0.4rem 1rem; border-radius: 2rem;
+    font-weight: bold; font-size: 0.9rem;
+}
+
+.context-box {
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border-left: 5px solid #0284c7;
+    border-radius: 0.8rem; padding: 1rem 1.2rem; margin-top: 1rem;
+}
+.context-box h4 { color: #0369a1; margin-bottom: 0.4rem; font-size: 1rem; }
+.context-box p { font-size: 0.9rem; color: #334155; line-height: 1.5; }
+
+.indicators {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
+}
+.indicator {
+    background: white; border-radius: 1rem; padding: 1rem; text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.indicator .emoji { font-size: 2rem; }
+.indicator .label { font-size: 0.85rem; color: #475569; font-weight: 600; margin: 0.3rem 0; }
+.indicator .value { font-size: 1.8rem; font-weight: 800; color: #0c4a6e; }
+.indicator .bar {
+    height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; margin-top: 0.5rem;
+}
+.indicator .fill { height: 100%; transition: width 0.6s, background 0.6s; border-radius: 5px; }
+
+/* ===== MAPA INTERATIVO ===== */
+.map-container {
+    background: white; border-radius: 1.5rem; padding: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+    position: sticky; top: 1rem;
+}
+.map-container h3 { color: #0369a1; margin-bottom: 1rem; text-align: center; }
+
+.mapa-lagoa {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    background: linear-gradient(to bottom, #e0f7fa 0%, #b2ebf2 100%);
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 3px solid #0284c7;
+}
+
+/* SVG da Lagoa */
+.lagoa-svg {
+    width: 100%;
+    height: 100%;
+    transition: all 1s ease;
+}
+
+.lagoa-corpo {
+    fill: var(--cor-agua, #9ACD32);
+    stroke: #0284c7;
+    stroke-width: 3;
+    transition: fill 1.5s ease;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+}
+
+/* Marcadores do Mapa */
+.map-marker {
+    position: absolute;
+    background: white;
+    border: 3px solid #0284c7;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transition: all 0.3s;
+    z-index: 10;
+    font-size: 1.5rem;
+}
+
+.map-marker:hover {
+    transform: scale(1.2);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+    z-index: 20;
+}
+
+.map-marker.poluicao {
+    border-color: #dc2626;
+    animation: pulse-alert 2s infinite;
+}
+
+.map-marker.melhoria {
+    border-color: #16a34a;
+    animation: pulse-success 2s infinite;
+}
+
+@keyframes pulse-alert {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+    50% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+}
+
+@keyframes pulse-success {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 119, 0.7); }
+    50% { box-shadow: 0 0 0 10px rgba(22, 163, 119, 0); }
+}
+
+.map-marker-label {
+    position: absolute;
+    top: 45px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.3rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.map-marker:hover .map-marker-label {
+    opacity: 1;
+}
+
+/* Popup de Stakeholders */
+.stakeholder-popup {
+    position: absolute;
+    background: white;
+    border: 2px solid #0284c7;
+    border-radius: 0.8rem;
+    padding: 1rem;
+    max-width: 280px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    z-index: 100;
+    display: none;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.stakeholder-popup.show { display: block; animation: fadeIn 0.3s; }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, -45%); }
+    to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.stakeholder-popup h4 {
+    color: #0369a1;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.stakeholder-popup .stakeholder-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.stakeholder-popup .stakeholder-list li {
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.85rem;
+    color: #475569;
+}
+
+.stakeholder-popup .stakeholder-list li:last-child {
+    border-bottom: none;
+}
+
+.stakeholder-popup .close-popup {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.stakeholder-popup .close-popup:hover { color: #0c4a6e; }
+
+/* Legenda do Mapa */
+.map-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 0.3rem;
+    border: 2px solid #0284c7;
+}
+
+/* Ícones dinâmicos no mapa */
+.map-icons {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.dynamic-icon {
+    background: white;
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: none;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.dynamic-icon.show { display: flex; animation: slideIn 0.5s; }
+
+@keyframes slideIn {
+    from { transform: translateX(100px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* ===== AÇÕES E CONTROLES ===== */
+.actions-panel {
+    background: white; border-radius: 1.5rem; padding: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+}
+.actions-panel h3 { color: #0369a1; margin-bottom: 1rem; }
+.actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.8rem; }
+.action-card {
+    border: 2px solid #e2e8f0; border-radius: 0.8rem; padding: 1rem;
+    cursor: pointer; transition: all 0.2s; background: #fafbfc;
+}
+.action-card:hover { border-color: #0284c7; transform: translateY(-2px); background: #f0f9ff; }
+.action-card.selected { border-color: #0284c7; background: #e0f2fe; box-shadow: 0 4px 12px rgba(2,132,199,0.2); }
+.action-card h4 { color: #0c4a6e; margin-bottom: 0.3rem; font-size: 1rem; }
+.action-card .desc { font-size: 0.85rem; color: #475569; margin-bottom: 0.5rem; }
+.action-card .effects { display: flex; gap: 0.5rem; flex-wrap: wrap; font-size: 0.75rem; font-weight: 600; }
+.effect-pos { color: #16a34a; }
+.effect-neg { color: #dc2626; }
+
+.strategy-box {
+    background: #fef3c7; border-left: 5px solid #f59e0b; border-radius: 0.8rem;
+    padding: 1rem; margin-bottom: 1rem;
+}
+.strategy-box h4 { color: #92400e; margin-bottom: 0.5rem; }
+.strategy-options { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.strategy-btn {
+    padding: 0.5rem 1rem; border: 2px solid #f59e0b; background: white; color: #92400e;
+    border-radius: 2rem; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+    transition: 0.2s;
+}
+.strategy-btn:hover { background: #fde68a; }
+.strategy-btn.selected { background: #f59e0b; color: white; }
+
+.game-controls { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.game-controls button {
+    flex: 1; min-width: 150px; padding: 0.8rem; border: none; border-radius: 2rem;
+    font-weight: bold; cursor: pointer; font-size: 1rem; transition: 0.2s;
+}
+.btn-advance { background: #16a34a; color: white; }
+.btn-advance:hover:not(:disabled) { background: #15803d; }
+.btn-advance:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-reset { background: #64748b; color: white; }
+.btn-reset:hover { background: #475569; }
+
+.narrative-popup {
+    position: fixed; top: 20px; right: 20px; max-width: 400px; background: white;
+    border-left: 5px solid #0284c7; border-radius: 0.8rem; padding: 1rem 1.2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 1000; display: none;
+    animation: slideInRight 0.4s;
+}
+.narrative-popup.show { display: block; }
+.narrative-popup h4 { color: #0369a1; margin-bottom: 0.4rem; font-size: 0.95rem; }
+.narrative-popup p { font-size: 0.85rem; color: #334155; line-height: 1.5; }
+@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.chart-container, .history-container {
+    background: white; border-radius: 1.5rem; padding: 1.5rem; margin-bottom: 1rem;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+}
+.chart-container h3, .history-container h3 { color: #0369a1; margin-bottom: 1rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 0.6rem; text-align: center; border-bottom: 1px solid #e2e8f0; }
+th { background: #f0f9ff; color: #0369a1; font-weight: 600; }
+.history-wrapper { max-height: 250px; overflow-y: auto; }
+
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(12, 74, 110, 0.85); backdrop-filter: blur(4px);
+    z-index: 2000; justify-content: center; align-items: center; padding: 1rem;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+    background: white; border-radius: 1.5rem; padding: 2rem; max-width: 750px;
+    max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideIn 0.4s;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+.modal .trophy { font-size: 4rem; text-align: center; margin-bottom: 0.5rem; }
+.modal h2 { color: #0284c7; text-align: center; margin-bottom: 0.5rem; }
+.modal .subtitle { text-align: center; color: #475569; margin-bottom: 1.5rem; }
+
+.final-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.5rem 0; }
+.stat-box {
+    background: #f0f9ff; border-radius: 0.8rem; padding: 1rem; text-align: center;
+    border-left: 4px solid #0284c7;
+}
+.stat-box .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+.stat-box .val { font-size: 1.8rem; font-weight: 800; color: #0c4a6e; margin: 0.3rem 0; }
+.stat-box .compare { font-size: 0.8rem; color: #475569; }
+
+.outcome-box {
+    border-radius: 0.8rem; padding: 1.2rem; margin: 1rem 0; text-align: center;
+}
+.outcome-victory { background: #dcfce7; border: 2px solid #16a34a; }
+.outcome-defeat { background: #fee2e2; border: 2px solid #dc2626; }
+.outcome-partial { background: #fef3c7; border: 2px solid #f59e0b; }
+.outcome-box h3 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+.outcome-box p { color: #334155; font-size: 0.95rem; line-height: 1.5; }
+
+.real-case-box {
+    background: #f0f9ff; border-left: 5px solid #0284c7; border-radius: 0.8rem;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+}
+.real-case-box h4 { color: #0369a1; margin-bottom: 0.5rem; }
+.real-case-box p, .real-case-box li { font-size: 0.9rem; color: #334155; line-height: 1.5; margin-bottom: 0.4rem; }
+.real-case-box ul { padding-left: 1.2rem; }
+
+.recommendations {
+    background: #f0fdf4; border-left: 5px solid #16a34a; border-radius: 0.8rem;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+}
+.recommendations h4 { color: #166534; margin-bottom: 0.5rem; }
+.recommendations ul { padding-left: 1.2rem; }
+.recommendations li { margin-bottom: 0.4rem; font-size: 0.9rem; color: #334155; line-height: 1.5; }
+
+@media (max-width: 1100px) {
+    .game-layout { grid-template-columns: 1fr; }
+    .map-container { position: relative; }
+    .indicators { grid-template-columns: 1fr; }
+    .final-stats { grid-template-columns: 1fr; }
+    .intro-card h1 { font-size: 1.8rem; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ==================== TELA 1: INTRODUÇÃO ==================== -->
+<div class="screen active" id="screen-intro">
+    <div class="intro-card">
+        <h1>🌊 Governa Lagoa</h1>
+        <div class="sub">O desafio do litígio estrutural ambiental</div>
+
+        <h2>📖 Contexto Real</h2>
+        <p><strong>Lagoa da Conceição (Florianópolis/SC)</strong> — em janeiro de 2021, o rompimento do talude da CASAN liberou 100 milhões de litros de efluentes, contaminando a lagoa e inundando residências. Quatro ACPs tradicionais falharam.</p>
+        <p>Em resposta, foi ajuizada a <strong>ACP estrutural nº 5012843-56.2021.4.04.7200</strong>, criando a Câmara Judicial de Proteção da Lagoa e um modelo de governança multipolar, com participação da UFSC, sociedade civil, MP e poder público.</p>
+        <p><small>Fonte: Dissertação de Diego Reschette Spagnolli (Mestrado Profissional em Direito - UEPG, 2026)</small></p>
+    </div>
+
+    <div class="intro-card">
+        <h2>🎯 Objetivo</h2>
+        <p>Você assume um dos papéis centrais no litígio. Em <strong>5 rodadas</strong> (cada uma = um marco real do processo), tome decisões para elevar a <strong>🌊 Saúde da Lagoa</strong> a ≥70, sem zerar a <strong>🤝 Colaboração</strong> nem a <strong>🗣️ Participação Social</strong>.</p>
+        <p><strong>Vitória:</strong> Saúde ≥70 ao final da rodada 5. <strong>Derrota:</strong> qualquer indicador chega a 0.</p>
+    </div>
+
+    <div class="intro-card">
+        <h2>👥 Escolha seu papel (clique em um card)</h2>
+        <div class="personas-grid">
+            <div class="persona-card" data-persona="juiz">
+                <div class="emoji">🧑‍⚖️</div>
+                <h3>Juiz-Gestor</h3>
+                <p>Coordena o processo, define estratégia, aplica multas e prazos. Equilibra os três indicadores.</p>
+            </div>
+            <div class="persona-card" data-persona="sociedade_civil">
+                <div class="emoji">🌿</div>
+                <h3>Sociedade Civil</h3>
+                <p>ONGs, moradores e associações. Mobiliza audiências, denuncia omissões, propõe planos.</p>
+            </div>
+            <div class="persona-card" data-persona="mp">
+                <div class="emoji">⚖️</div>
+                <h3>Ministério Público</h3>
+                <p>MPF/MPSC fiscalizam, emitem recomendações, ajuízam incidentes e exigem transparência.</p>
+            </div>
+            <div class="persona-card" data-persona="gestor_publico">
+                <div class="emoji">🏛️</div>
+                <h3>Gestor Público</h3>
+                <p>CASAN, Município, IMA. Executam obras com orçamento limitado. Podem colaborar ou resistir.</p>
+            </div>
+        </div>
+        <div class="selection-status" id="selectionStatus">
+            👆 Clique em uma das personas acima para começar
+        </div>
+    </div>
+
+    <div class="intro-card">
+        <h2>📜 Regras</h2>
+        <ul class="rules-list">
+            <li><strong>5 rodadas</strong> = marcos reais do processo (2021 → 2026)</li>
+            <li>A cada rodada, escolha <strong>1 ação</strong> da sua persona</li>
+            <li>Se for <strong>juiz</strong>, também defina a <strong>estratégia</strong> da rodada</li>
+            <li>Cada ação altera os 3 indicadores (Saúde, Colaboração, Participação)</li>
+            <li><strong>NOVO:</strong> Observe o mapa interativo reagindo às suas decisões!</li>
+            <li>Progresso salvo automaticamente no navegador</li>
+        </ul>
+    </div>
+
+    <div class="intro-card" style="background:#e6f7ff;">
+        <h2>🧪 Créditos</h2>
+        <p><strong>Dissertação:</strong> "Colaboração, participação e decisão nas demandas estruturais ambientais: uma análise prática a partir do caso da ACP da Lagoa da Conceição" — <strong>Diego Reschette Spagnolli</strong> (UEPG, 2026). Orientador: Prof. Dr. Reshad Tawfeiq. Coorientador: Prof. Dr. Antônio César Bochenek.</p>
+        <p><strong>LegalTechLab / Mestrado Profissional em Direito UEPG</strong> — protótipo gamificado translacional.</p>
+        <p>⚖️ Caso real: ACP 5012843-56.2021.4.04.7200/SC — 6ª Vara Federal de Florianópolis.</p>
+    </div>
+
+    <button class="btn-primary" id="startBtn">▶ Começar Jornada</button>
+</div>
+
+<!-- ==================== TELA 2: JOGO COM MAPA ==================== -->
+<div class="screen" id="screen-game">
+    <div class="game-layout">
+        <div class="game-panel">
+            <div class="game-header">
+                <div class="round-info">
+                    <div>
+                        <div class="round-title" id="roundTitle">Rodada 1</div>
+                        <div class="round-period" id="roundPeriod">Jan-Mar 2021</div>
+                    </div>
+                    <div class="persona-badge" id="personaBadge">🧑⚖️ Juiz-Gestor</div>
+                </div>
+                <div class="context-box">
+                    <h4 id="contextTitle">📍 Contexto</h4>
+                    <p id="contextText">...</p>
+                </div>
+            </div>
+
+            <div class="indicators">
+                <div class="indicator">
+                    <div class="emoji">🌊</div>
+                    <div class="label">Saúde da Lagoa</div>
+                    <div class="value" id="valSaude">25</div>
+                    <div class="bar"><div class="fill" id="fillSaude" style="width:25%; background:#dc2626;"></div></div>
+                </div>
+                <div class="indicator">
+                    <div class="emoji">🤝</div>
+                    <div class="label">Colaboração</div>
+                    <div class="value" id="valColab">40</div>
+                    <div class="bar"><div class="fill" id="fillColab" style="width:40%; background:#f59e0b;"></div></div>
+                </div>
+                <div class="indicator">
+                    <div class="emoji">🗣️</div>
+                    <div class="label">Participação Social</div>
+                    <div class="value" id="valPart">30</div>
+                    <div class="bar"><div class="fill" id="fillPart" style="width:30%; background:#f59e0b;"></div></div>
+                </div>
+            </div>
+
+            <div id="strategyContainer" style="display:none;">
+                <div class="strategy-box">
+                    <h4>🎯 Defina a estratégia geral desta rodada</h4>
+                    <p style="font-size:0.85rem; color:#78350f;">Como juiz-gestor, sua postura afeta o tom das interações.</p>
+                    <div class="strategy-options">
+                        <button class="strategy-btn" data-strategy="colaborativa">🤝 Colaborativa</button>
+                        <button class="strategy-btn" data-strategy="diretiva">📋 Diretiva</button>
+                        <button class="strategy-btn" data-strategy="competitiva">⚡ Competitiva</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions-panel">
+                <h3>🎲 Escolha sua ação para esta rodada</h3>
+                <div class="actions-grid" id="actionsGrid"></div>
+            </div>
+
+            <div class="game-controls">
+                <button class="btn-advance" id="advanceBtn" disabled>▶ Avançar para próxima rodada</button>
+                <button class="btn-reset" id="resetBtn">🔄 Reiniciar</button>
+            </div>
+
+            <div class="chart-container">
+                <h3>📈 Evolução dos Indicadores</h3>
+                <canvas id="evolutionChart" style="max-height: 280px;"></canvas>
+            </div>
+
+            <div class="history-container">
+                <h3>📋 Histórico de Decisões</h3>
+                <div class="history-wrapper">
+                    <table>
+                        <thead>
+                            <tr><th>Rodada</th><th>Período</th><th>Ação Escolhida</th><th>Saúde</th><th>Colab.</th><th>Part.</th></tr>
+                        </thead>
+                        <tbody id="historyBody">
+                            <tr><td colspan="6" style="text-align:center; color:#94a3b8;">Aguardando primeira decisão...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAPA INTERATIVO -->
+        <div class="map-container">
+            <h3>🗺️ Mapa da Lagoa da Conceição</h3>
+            <div class="mapa-lagoa" id="mapaJogo">
+                <!-- SVG da Lagoa -->
+                <svg class="lagoa-svg" viewBox="0 0 400 500" preserveAspectRatio="xMidYMid meet">
+                    <!-- Corpo da Lagoa -->
+                    <path class="lagoa-corpo" d="M 150 50 Q 200 40 220 80 Q 240 120 230 180 Q 220 240 200 280 Q 180 320 160 380 Q 140 440 120 460 Q 100 480 80 460 Q 60 440 70 380 Q 80 320 90 280 Q 100 240 110 180 Q 120 120 130 80 Q 140 40 150 50 Z" />
+                    
+                    <!-- Dunas da Joaquina -->
+                    <ellipse cx="280" cy="420" rx="40" ry="30" fill="#f4d03f" stroke="#d4ac0d" stroke-width="2" />
+                    
+                    <!-- Parque Municipal das Dunas -->
+                    <ellipse cx="260" cy="380" rx="25" ry="20" fill="#58d68d" stroke="#27ae60" stroke-width="2" />
+                </svg>
+
+                <!-- Marcadores Interativos -->
+                <div class="map-marker poluicao" data-local="dunas" style="top: 82%; left: 72%;" onclick="showStakeholders('dunas')">
+                    ⚠️
+                    <span class="map-marker-label">Dunas da Joaquina</span>
+                </div>
+
+                <div class="map-marker" data-local="centrinho" style="top: 55%; left: 45%;" onclick="showStakeholders('centrinho')">
+                    🏘️
+                    <span class="map-marker-label">Centrinho</span>
+                </div>
+
+                <div class="map-marker" data-local="costa" style="top: 25%; left: 38%;" onclick="showStakeholders('costa')">
+                    🚤
+                    <span class="map-marker-label">Costa da Lagoa</span>
+                </div>
+
+                <div class="map-marker" data-local="galheta" style="top: 65%; left: 68%;" onclick="showStakeholders('galheta')">
+                    🏖️
+                    <span class="map-marker-label">Galheta</span>
+                </div>
+
+                <div class="map-marker" data-local="aruacao" style="top: 48%; left: 42%;" onclick="showStakeholders('aruacao')">
+                    🎣
+                    <span class="map-marker-label">Canto dos Araçás</span>
+                </div>
+
+                <div class="map-marker" data-local="porto" style="top: 35%; left: 35%;" onclick="showStakeholders('porto')">
+                    ⛵
+                    <span class="map-marker-label">Porto da Lagoa</span>
+                </div>
+
+                <!-- Ícones Dinâmicos -->
+                <div class="map-icons">
+                    <div class="dynamic-icon" id="icone-peixes">🐟 Água limpa</div>
+                    <div class="dynamic-icon" id="icone-obras">🏗️ Lagoa Viva</div>
+                    <div class="dynamic-icon" id="icone-viveiros">🌱 Viveiros</div>
+                    <div class="dynamic-icon" id="icone-trato">🔍 Trato Pela Lagoa</div>
+                </div>
+
+                <!-- Popup de Stakeholders -->
+                <div class="stakeholder-popup" id="stakeholderPopup">
+                    <button class="close-popup" onclick="closeStakeholderPopup()">×</button>
+                    <h4 id="popupTitle">📍 Local</h4>
+                    <ul class="stakeholder-list" id="popupStakeholders"></ul>
+                </div>
+            </div>
+
+            <!-- Legenda -->
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #dc2626;"></div>
+                    <span>Crítico (&lt;40)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f59e0b;"></div>
+                    <span>Atenção (40-69)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #16a34a;"></div>
+                    <span>Saudável (≥70)</span>
+                </div>
+                <div class="legend-item">
+                    <span>⚠️ Poluição</span>
+                </div>
+                <div class="legend-item">
+                    <span>✅ Melhoria</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<div class="narrative-popup" id="narrativePopup">
+    <h4 id="narrativeTitle">📖 Consequência</h4>
+    <p id="narrativeText">...</p>
+</div>
+
+<!-- ==================== MODAL FINAL ==================== -->
+<div class="modal-overlay" id="finalModal">
+    <div class="modal">
+        <div class="trophy" id="finalTrophy">🏆</div>
+        <h2 id="finalTitle">Jornada Concluída</h2>
+        <p class="subtitle" id="finalSubtitle">Você completou os 5 marcos do processo estrutural.</p>
+
+        <div class="final-stats">
+            <div class="stat-box">
+                <div class="label">🌊 Saúde Final</div>
+                <div class="val" id="finalSaude">0</div>
+                <div class="compare">Meta: ≥70</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">🤝 Colaboração</div>
+                <div class="val" id="finalColab">0</div>
+                <div class="compare">Não pode zerar</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">🗣️ Participação</div>
+                <div class="val" id="finalPart">0</div>
+                <div class="compare">Não pode zerar</div>
+            </div>
+        </div>
+
+        <div id="outcomeBox" class="outcome-box outcome-victory">
+            <h3 id="outcomeTitle">✅ Vitória!</h3>
+            <p id="outcomeText">Você conseguiu equilibrar os três pilares do processo estrutural.</p>
+        </div>
+
+        <div class="real-case-box">
+            <h4>📚 O que aconteceu no caso real?</h4>
+            <p>A ACP estrutural da Lagoa da Conceição (2021-2026) demonstrou que:</p>
+            <ul>
+                <li>A <strong>Câmara Judicial</strong> (instalada em nov/2022) reduziu conflitos e destravou obras.</li>
+                <li>Os <strong>laudos independentes da UFSC</strong> neutralizaram a narrativa da CASAN.</li>
+                <li>A <strong>participação cidadã</strong> transformou moradores em sujeitos políticos do litígio.</li>
+                <li>As <strong>multas diárias (R$ 100 mil/dia)</strong> venceram a inércia burocrática.</li>
+                <li>Em 2026, o processo segue com mutirões e debate sobre emissário submarino.</li>
+            </ul>
+        </div>
+
+        <div class="recommendations">
+            <h4>📄 Recomendações da Dissertação (Spagnolli, 2026)</h4>
+            <ul>
+                <li><strong>Processo estrutural como método:</strong> litígios complexos exigem governança multipolar.</li>
+                <li><strong>Amicus científico permanente:</strong> a academia deve atuar como consultora do juízo.</li>
+                <li><strong>Participação qualificada:</strong> audiências e oficinas são mais eficazes que oitivas formais.</li>
+                <li><strong>Astreintes eficazes:</strong> multas diárias vencem a inércia melhor que indenizações.</li>
+                <li><strong>Plano judicial progressivo:</strong> metas de curto, médio e longo prazo mantêm engajamento.</li>
+                <li><strong>Transparência ativa:</strong> atas e relatórios devem ser públicos e acessíveis.</li>
+            </ul>
+        </div>
+
+        <button class="btn-primary" onclick="document.getElementById('finalModal').classList.remove('show')">Fechar e analisar resultados</button>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// DADOS DO JOGO
+// ============================================================
+const PERSONAS_INFO = {
+    juiz: { nome: 'Juiz-Gestor', emoji: '🧑‍⚖️' },
+    sociedade_civil: { nome: 'Sociedade Civil', emoji: '🌿' },
+    mp: { nome: 'Ministério Público', emoji: '⚖️' },
+    gestor_publico: { nome: 'Gestor Público', emoji: '🏛️' }
+};
+
+// Stakeholders por local (baseado na Figura 3 da dissertação)
+const STAKEHOLDERS_POR_LOCAL = {
+    dunas: {
+        nome: 'Dunas da Joaquina / Parque Municipal',
+        stakeholders: [
+            '🏛️ CASAN (réu - sistema de evapoinfiltração)',
+            '🏛️ Município de Florianópolis (réu - fiscalização)',
+            '🏛️ IMA/FLORAM (réu - licenciamento)',
+            '🌿 Associação Costa Legal (autor)',
+            '🌿 Moradores locais',
+            '⚖️ MPSC (fiscal da lei)'
+        ]
+    },
+    centrinho: {
+        nome: 'Centrinho da Lagoa',
+        stakeholders: [
+            '🏛️ Município (regularização urbana)',
+            '🌿 Associação Pachamama',
+            '🌿 UFECO (União Florianopolitana)',
+            ' UFSC (pesquisa e laudos)',
+            '🏛️ Secretaria Municipal de Mobilidade',
+            '⚖️ MPF (fiscalização)'
+        ]
+    },
+    costa: {
+        nome: 'Costa da Lagoa',
+        stakeholders: [
+            '🌿 Comunidade tradicional',
+            '️ CASAN (saneamento)',
+            '🌿 Associação de Moradores',
+            '🎓 UFSC (monitoramento)',
+            '⚖️ Defensoria Pública',
+            '🏛️ Secretaria de Pesca'
+        ]
+    },
+    galheta: {
+        nome: 'Praia da Galheta / Parque Municipal',
+        stakeholders: [
+            '🏛️ Município (gestão do parque)',
+            '🏛️ IMA (fiscalização ambiental)',
+            '🌿 ONGs ambientalistas',
+            '🎓 UFSC (pesquisa)',
+            '⚖️ MPSC'
+        ]
+    },
+    aruacao: {
+        nome: 'Canto dos Araçás',
+        stakeholders: [
+            '🌿 Pescadores artesanais',
+            '🏛️ Secretaria de Pesca',
+            '🌿 Associação de Pescadores',
+            '⚖️ Defensoria Pública',
+            '🏛️ CASAN'
+        ]
+    },
+    porto: {
+        nome: 'Porto da Lagoa',
+        stakeholders: [
+            '🌿 Comunidade ribeirinha',
+            '🏛️ CASAN (ETE)',
+            '🌿 Associação Costa Legal',
+            '🎓 UFSC (laudos técnicos)',
+            '⚖️ MPF/MPSC'
+        ]
+    }
+};
+
+// Mapeamento de ações para locais afetados
+const ACAO_PARA_LOCAL = {
+    'viveiros': 'dunas',
+    'desativacao': 'dunas',
+    'viveiros_gestor': 'dunas',
+    'trato': 'centrinho',
+    'fiscalizacao_c': 'centrinho',
+    'plantio': 'galheta',
+    'emissario': 'porto',
+    'regularizacao': 'centrinho',
+    'contencao': 'porto',
+    'camara': 'centrinho',
+    'laudo_ufsc': 'aruacao',
+    'astreintes': 'dunas'
+};
+
+const RODADAS = [
+    {
+        id: 1,
+        titulo: "O Desastre e a Reação Imediata",
+        periodo: "Jan-Mar 2021",
+        contexto: "Rompimento do talude da CASAN libera 100 milhões de litros de efluentes na Lagoa da Conceição. Residências inundadas, ecossistema em colapso. A sociedade clama por resposta urgente.",
+        acoes: {
+            juiz: [
+                { id: 'liminar', nome: '🚨 Liminar urgente', desc: 'Determina ações emergenciais imediatas à CASAN e Município', efeitos: { saude: +12, colab: -8, part: +5 }, local: 'porto', narrativa: 'A liminar acelera respostas, mas gera tensão com os réus.' },
+                { id: 'audiencia', nome: '🎤 Audiência pública inicial', desc: 'Convoca sociedade, réus e técnicos para ouvir todos os lados', efeitos: { saude: +5, colab: +10, part: +15 }, local: 'centrinho', narrativa: 'A audiência dá voz aos afetados no Centrinho.' },
+                { id: 'pericia', nome: '🔬 Determinar perícia técnica urgente', desc: 'Oficia UFSC e órgãos técnicos para laudo independente', efeitos: { saude: +10, colab: +5, part: +8 }, local: 'aruacao', narrativa: 'A ciência independente começa a atuar.' },
+                { id: 'bloqueio', nome: '💰 Bloqueio judicial de valores', desc: 'Congela recursos da CASAN para fundo de reconstrução', efeitos: { saude: +18, colab: -18, part: +3 }, local: 'dunas', narrativa: 'A medida asfixia financeiramente a CASAN.' }
+            ],
+            sociedade_civil: [
+                { id: 'acp', nome: '📜 Ajuizar ACP com tese inovadora', desc: 'Propõe reconhecer a Lagoa como Sujeito de Direitos', efeitos: { saude: +10, colab: -5, part: +12 }, local: 'centrinho', narrativa: 'A tese ousada ganha repercussão nacional.' },
+                { id: 'mobilizacao', nome: '📢 Mobilização comunitária', desc: 'Associações organizam protestos e abaixo-assinados', efeitos: { saude: +5, colab: -10, part: +18 }, local: 'costa', narrativa: 'A pressão das ruas força o Judiciário a agir.' },
+                { id: 'midia', nome: '📺 Campanha midiática', desc: 'ONGs lançam campanha nacional sobre o desastre', efeitos: { saude: +8, colab: -3, part: +15 }, local: 'galheta', narrativa: 'A exposição nacional traz visibilidade.' },
+                { id: 'articulacao', nome: '🤝 Articular com MP e academia', desc: 'Constrói aliança técnica com MPF e UFSC', efeitos: { saude: +12, colab: +8, part: +10 }, local: 'aruacao', narrativa: 'A articulação cria uma frente robusta.' }
+            ],
+            mp: [
+                { id: 'recomendacao', nome: '📋 Recomendação técnica', desc: 'MPF emite recomendação formal à CASAN e Município', efeitos: { saude: +8, colab: +5, part: +5 }, local: 'porto', narrativa: 'A recomendação dá peso institucional.' },
+                { id: 'inquerito', nome: '🔍 Inquérito Civil', desc: 'Abre investigação paralela para apurar responsabilidades', efeitos: { saude: +10, colab: -10, part: +8 }, local: 'dunas', narrativa: 'O inquérito aumenta a pressão.' },
+                { id: 'tutela', nome: '⚖️ Pedir tutela de urgência', desc: 'Requer medidas emergenciais ao juiz', efeitos: { saude: +15, colab: -5, part: +5 }, local: 'porto', narrativa: 'A tutela acelera respostas concretas.' },
+                { id: 'pericia_mp', nome: '🔬 Assistente técnico próprio', desc: 'Contrata peritos para auditar laudos da CASAN', efeitos: { saude: +12, colab: -3, part: +8 }, local: 'aruacao', narrativa: 'O MP ganha autonomia técnica.' }
+            ],
+            gestor_publico: [
+                { id: 'contencao', nome: '🚧 Obras de contenção emergenciais', desc: 'CASAN inicia barreiras físicas imediatas', efeitos: { saude: +18, colab: +10, part: +3 }, local: 'porto', narrativa: 'As obras reduzem o dano imediato.' },
+                { id: 'nota', nome: '📄 Nota técnica minimizando danos', desc: 'CASAN divulga laudo próprio alegando impacto temporário', efeitos: { saude: -5, colab: -15, part: -8 }, local: 'dunas', narrativa: 'A tentativa de minimizar gera desconfiança.' },
+                { id: 'plano', nome: '📊 Apresentar plano emergencial', desc: 'Município e CASAN propõem cronograma inicial', efeitos: { saude: +10, colab: +12, part: +5 }, local: 'centrinho', narrativa: 'O plano mostra disposição.' },
+                { id: 'resistencia', nome: '🛡️ Resistir às liminares', desc: 'Réus apresentam defesa alegando impossibilidade técnica', efeitos: { saude: -8, colab: -20, part: -5 }, local: 'dunas', narrativa: 'A resistência endurece o conflito.' }
+            ]
+        }
+    },
+    {
+        id: 2,
+        titulo: "Instituição da Governança Socioecológica",
+        periodo: "Nov 2022",
+        contexto: "Após 18 meses de litígio, o juiz Marcelo Krás Borges instala a Câmara Judicial de Proteção da Lagoa da Conceição. Novo modelo de governança multipolar.",
+        acoes: {
+            juiz: [
+                { id: 'camara', nome: '🏛️ Instalar Câmara Judicial', desc: 'Cria mesa permanente com todos os atores', efeitos: { saude: +10, colab: +20, part: +18 }, local: 'centrinho', narrativa: 'A Câmara Judicial transforma o processo no Centrinho.' },
+                { id: 'plano_judicial', nome: '📋 Determinar Plano Judicial de Ações', desc: 'Exige plano progressivo com metas', efeitos: { saude: +12, colab: +10, part: +8 }, local: 'centrinho', narrativa: 'O plano estruturado organiza a resposta.' },
+                { id: 'multa_generica', nome: '💰 Fixar astreintes genéricas', desc: 'Multas diárias para qualquer descumprimento', efeitos: { saude: +15, colab: -10, part: +5 }, local: 'dunas', narrativa: 'A pressão financeira acelera.' },
+                { id: 'cejuscon', nome: '🤝 Ativar Cejuscon', desc: 'Centro de solução consensual de conflitos', efeitos: { saude: +8, colab: +15, part: +12 }, local: 'centrinho', narrativa: 'A mediação especializada destrava impasses.' }
+            ],
+            sociedade_civil: [
+                { id: 'assento', nome: '🪑 Garantir assento na Câmara', desc: 'Exige participação formal na governança', efeitos: { saude: +5, colab: +10, part: +20 }, local: 'centrinho', narrativa: 'A sociedade civil conquista voz institucional.' },
+                { id: 'fiscalizacao_c', nome: '🔍 Criar comitê de fiscalização cidadã', desc: 'Moradores monitoram obras', efeitos: { saude: +12, colab: +5, part: +15 }, local: 'centrinho', narrativa: 'O "Trato Pela Lagoa" nasce.' },
+                { id: 'proposta_tecnica', nome: '📊 Apresentar contraproposta técnica', desc: 'ONGs apresentam plano alternativo', efeitos: { saude: +10, colab: +8, part: +12 }, local: 'aruacao', narrativa: 'A sociedade passa a propor soluções.' },
+                { id: 'pressao_mid', nome: '📢 Intensificar pressão midiática', desc: 'Campanha nacional sobre lentidão', efeitos: { saude: +8, colab: -12, part: +15 }, local: 'galheta', narrativa: 'A exposição força avanços.' }
+            ],
+            mp: [
+                { id: 'tac', nome: '📝 Propor TAC (Termo Ajustamento)', desc: 'Acordo formal com metas verificáveis', efeitos: { saude: +12, colab: +15, part: +8 }, local: 'centrinho', narrativa: 'O TAC cria compromissos formais.' },
+                { id: 'auditoria', nome: '🔬 Auditoria independente dos laudos', desc: 'MP exige que UFSC audite relatórios', efeitos: { saude: +15, colab: +5, part: +10 }, local: 'aruacao', narrativa: 'A auditoria neutraliza a narrativa empresarial.' },
+                { id: 'incidente', nome: '⚡ Incidente de descumprimento', desc: 'MP denuncia descumprimento', efeitos: { saude: +10, colab: -12, part: +5 }, local: 'dunas', narrativa: 'O incidente aumenta a pressão.' },
+                { id: 'indigenista', nome: '🌿 Incluir dimensões sociais', desc: 'MP exige proteção a pescadores', efeitos: { saude: +5, colab: +5, part: +18 }, local: 'aruacao', narrativa: 'Amplia o escopo: justiça social.' }
+            ],
+            gestor_publico: [
+                { id: 'adesao_camara', nome: '✅ Aderir formalmente à Câmara', desc: 'CASAN e Município aceitam governança', efeitos: { saude: +10, colab: +18, part: +10 }, local: 'centrinho', narrativa: 'A adesão legitima a Câmara.' },
+                { id: 'cronograma', nome: '📅 Apresentar cronograma detalhado', desc: 'Réus propõem etapas verificáveis', efeitos: { saude: +12, colab: +12, part: +5 }, local: 'porto', narrativa: 'O cronograma organiza a resposta.' },
+                { id: 'resistencia2', nome: '🛡️ Questionar competência da Câmara', desc: 'Réus alegam extrapolação', efeitos: { saude: -5, colab: -20, part: -10 }, local: 'dunas', narrativa: 'A resistência gera multas.' },
+                { id: 'orcamento', nome: '💵 Liberar orçamento extraordinário', desc: 'CASAN destina recursos', efeitos: { saude: +18, colab: +10, part: +5 }, local: 'dunas', narrativa: 'O dinheiro destrava obras.' }
+            ]
+        }
+    },
+    {
+        id: 3,
+        titulo: "Ciência vs. Narrativa Empresarial",
+        periodo: "Ago 2023",
+        contexto: "Relatórios da UFSC revelam gargalos de saneamento. A CASAN tenta minimizar com laudos próprios. Embate técnico decisivo.",
+        acoes: {
+            juiz: [
+                { id: 'laudo_ufsc', nome: '🔬 Adotar laudo UFSC como oficial', desc: 'Laudos independentes prevalecem', efeitos: { saude: +15, colab: -8, part: +12 }, local: 'aruacao', narrativa: 'A academia é consagrada como braço técnico.' },
+                { id: 'pericia_oficial', nome: '📋 Perícia oficial contraditória', desc: 'Nova perícia com todos os lados', efeitos: { saude: +10, colab: +8, part: +10 }, local: 'aruacao', narrativa: 'O contraditório fortalece legitimidade.' },
+                { id: 'audiencia_tecnica', nome: '🎤 Audiência técnica com cientistas', desc: 'UFSC, CASAN e IBAMA debatem', efeitos: { saude: +12, colab: +5, part: +15 }, local: 'centrinho', narrativa: 'A audiência educa a sociedade.' },
+                { id: 'decisao_tecnica', nome: '⚡ Decisão fundamentada em ciência', desc: 'Juiz decide com base em laudos', efeitos: { saude: +18, colab: -12, part: +8 }, local: 'dunas', narrativa: 'Decisão técnica robusta.' }
+            ],
+            sociedade_civil: [
+                { id: 'divulgacao', nome: '📢 Divulgar laudos da UFSC', desc: 'ONGs traduzem dados técnicos', efeitos: { saude: +8, colab: +3, part: +18 }, local: 'centrinho', narrativa: 'Tradução científica amplia engajamento.' },
+                { id: 'denuncia', nome: '🚨 Denunciar omissões da CASAN', desc: 'Coletivos expõem descumprimentos', efeitos: { saude: +10, colab: -10, part: +15 }, local: 'porto', narrativa: 'Denúncia pública pressiona.' },
+                { id: 'oficina', nome: '🎓 Oficina técnica comunitária', desc: 'Moradores aprendem a monitorar', efeitos: { saude: +12, colab: +8, part: +15 }, local: 'costa', narrativa: 'Capacitação cria fiscais técnicos.' },
+                { id: 'abaixo', nome: '✍️ Abaixo-assinado por desativação', desc: 'Campanha pelo fim das lagoas', efeitos: { saude: +10, colab: -5, part: +18 }, local: 'dunas', narrativa: 'Mobilização coloca tema na agenda.' }
+            ],
+            mp: [
+                { id: 'auditoria_mp', nome: '🔬 Auditoria técnica dos laudos CASAN', desc: 'MP contrata peritos', efeitos: { saude: +15, colab: -5, part: +10 }, local: 'aruacao', narrativa: 'MP desmonta narrativa minimizadora.' },
+                { id: 'recomendacao_tecnica', nome: '📋 Recomendação baseada em UFSC', desc: 'MP endossa laudos universitários', efeitos: { saude: +12, colab: +5, part: +10 }, local: 'aruacao', narrativa: 'Endosso dá peso institucional.' },
+                { id: 'inquerito_casan', nome: '🔍 Inquérito contra diretores da CASAN', desc: 'MP investiga responsabilidade pessoal', efeitos: { saude: +10, colab: -18, part: +8 }, local: 'dunas', narrativa: 'Responsabilização pessoal acelera.' },
+                { id: 'termo_tecnico', nome: '📝 TAC com metas técnicas', desc: 'Acordo com indicadores UFSC', efeitos: { saude: +15, colab: +12, part: +8 }, local: 'centrinho', narrativa: 'TAC técnico cria compromissos auditáveis.' }
+            ],
+            gestor_publico: [
+                { id: 'reconhecer', nome: '✅ Reconhecer dados da UFSC', desc: 'CASAN aceita laudos independentes', efeitos: { saude: +12, colab: +18, part: +10 }, local: 'aruacao', narrativa: 'Aceitação técnica muda o tom.' },
+                { id: 'contralaudo', nome: '📄 Apresentar contralaudo', desc: 'CASAN questiona UFSC', efeitos: { saude: -8, colab: -18, part: -5 }, local: 'dunas', narrativa: 'Contralaudo é desmontado.' },
+                { id: 'plano_ajuste', nome: '📊 Ajustar plano com base na ciência', desc: 'Réus revisam cronograma', efeitos: { saude: +15, colab: +10, part: +8 }, local: 'porto', narrativa: 'Ajuste demonstra maturidade.' },
+                { id: 'investimento', nome: '💵 Anunciar investimento massivo', desc: 'CASAN destina R$ 200 milhões', efeitos: { saude: +18, colab: +8, part: +5 }, local: 'dunas', narrativa: 'Investimento destrava obras.' }
+            ]
+        }
+    },
+    {
+        id: 4,
+        titulo: "Projeto Lagoa Viva e Astreintes",
+        periodo: "Out 2024",
+        contexto: "Justiça determina projeto Lagoa Viva. CASAN obrigada (R$ 100 mil/dia) a criar viveiros, estabilizar dunas e retomar 'Trato Pela Lagoa'.",
+        acoes: {
+            juiz: [
+                { id: 'astreintes', nome: '💰 Fixar astreintes de R$ 100 mil/dia', desc: 'Multa diária por descumprimento', efeitos: { saude: +15, colab: -10, part: +8 }, local: 'dunas', narrativa: 'Multa asfixiante acelera execução.' },
+                { id: 'monitoramento', nome: '📊 Criar comitê de monitoramento', desc: 'Acompanhamento mensal', efeitos: { saude: +10, colab: +12, part: +12 }, local: 'centrinho', narrativa: 'Monitoramento garante transparência.' },
+                { id: 'viveiros', nome: '🌱 Determinar viveiros de mudas nativas', desc: 'Estabilização das dunas', efeitos: { saude: +18, colab: +5, part: +8 }, local: 'dunas', narrativa: 'Viveiros geram resultados visíveis.' },
+                { id: 'prestacao', nome: '📋 Exigir prestação de contas mensal', desc: 'CASAN reporta avanços', efeitos: { saude: +10, colab: +8, part: +15 }, local: 'centrinho', narrativa: 'Transparência fortalece controle social.' }
+            ],
+            sociedade_civil: [
+                { id: 'trato', nome: '🔍 Ativar "Trato Pela Lagoa"', desc: 'Moradores guiam vistorias', efeitos: { saude: +15, colab: +8, part: +18 }, local: 'centrinho', narrativa: 'Fiscalização cidadã torna-se referência.' },
+                { id: 'plantio', nome: '🌱 Mutirão de plantio comunitário', desc: 'Moradores participam da recuperação', efeitos: { saude: +12, colab: +12, part: +15 }, local: 'galheta', narrativa: 'Envolvimento cria pertencimento.' },
+                { id: 'cobranca', nome: '📢 Cobrar cronogramas publicamente', desc: 'Associações monitoram', efeitos: { saude: +10, colab: -5, part: +15 }, local: 'centrinho', narrativa: 'Cobrança mantém pressão.' },
+                { id: 'educacao', nome: '🎓 Programa educativo ambiental', desc: 'Campanhas nas escolas', efeitos: { saude: +8, colab: +10, part: +15 }, local: 'costa', narrativa: 'Educação cria cultura duradoura.' }
+            ],
+            mp: [
+                { id: 'fiscalizacao_mp', nome: '🔬 Fiscalização técnica mensal', desc: 'MP audita Lagoa Viva', efeitos: { saude: +15, colab: +5, part: +10 }, local: 'dunas', narrativa: 'Fiscalização garante execução.' },
+                { id: 'execucao_multa', nome: '💰 Executar multas acumuladas', desc: 'MP cobra astreintes', efeitos: { saude: +12, colab: -12, part: +8 }, local: 'dunas', narrativa: 'Execução financeira pressiona.' },
+                { id: 'aditamento', nome: '📝 Aditar o TAC com novas metas', desc: 'Ampliar compromissos', efeitos: { saude: +15, colab: +8, part: +10 }, local: 'centrinho', narrativa: 'Aditamento mantém processo dinâmico.' },
+                { id: 'dano_coletivo', nome: '⚖️ Pedir dano moral coletivo', desc: 'Indenização de R$ 10 milhões', efeitos: { saude: +10, colab: -15, part: +12 }, local: 'dunas', narrativa: 'Indenização marca responsabilização.' }
+            ],
+            gestor_publico: [
+                { id: 'executar_lagoa_viva', nome: '✅ Executar projeto Lagoa Viva', desc: 'CASAN cumpre integralmente', efeitos: { saude: +20, colab: +15, part: +8 }, local: 'dunas', narrativa: 'Execução plena restaura confiança.' },
+                { id: 'executar_parcial', nome: '⚠️ Execução parcial', desc: 'CASAN cumpre parte', efeitos: { saude: +10, colab: -8, part: +5 }, local: 'dunas', narrativa: 'Execução parcial gera frustração.' },
+                { id: 'viveiros_gestor', nome: '🌱 Criar viveiros de mudas nativas', desc: 'Programa de estabilização', efeitos: { saude: +18, colab: +10, part: +8 }, local: 'dunas', narrativa: 'Viveiros tornam-se símbolo.' },
+                { id: 'resistencia_obra', nome: '🛡️ Resistir a novas obrigações', desc: 'CASAN contesta', efeitos: { saude: -10, colab: -20, part: -8 }, local: 'dunas', narrativa: 'Resistência gera multas pesadas.' }
+            ]
+        }
+    },
+    {
+        id: 5,
+        titulo: "Cobrança Final e Conciliação",
+        periodo: "Mar-Jun 2026",
+        contexto: "MPSC exige encerramento total nas dunas e R$ 10 milhões. Justiça e Cejuscon promovem audiências e mutirões na Rua Osni Ortiga.",
+        acoes: {
+            juiz: [
+                { id: 'sentenca_estrutural', nome: '⚖️ Sentença estrutural definitiva', desc: 'Consolida toda a governança', efeitos: { saude: +15, colab: +10, part: +12 }, local: 'centrinho', narrativa: 'Sentença histórica serve de precedente.' },
+                { id: 'conciliacao', nome: '🤝 Audiência conciliatória final', desc: 'Cejuscon media acordo', efeitos: { saude: +12, colab: +18, part: +15 }, local: 'centrinho', narrativa: 'Conciliação transforma conflito em cooperação.' },
+                { id: 'supervisao', nome: '📊 Criar supervisão judicial permanente', desc: 'Acompanhamento por 5 anos', efeitos: { saude: +10, colab: +8, part: +12 }, local: 'centrinho', narrativa: 'Supervisão garante continuidade.' },
+                { id: 'desativacao', nome: '🚫 Determinar desativação total das dunas', desc: 'Fim do sistema de evapoinfiltração', efeitos: { saude: +20, colab: -10, part: +10 }, local: 'dunas', narrativa: 'Decisão resolve na raiz.' }
+            ],
+            sociedade_civil: [
+                { id: 'acordo_final', nome: '✅ Assinar acordo histórico', desc: 'Pactos de cooperação', efeitos: { saude: +12, colab: +18, part: +15 }, local: 'centrinho', narrativa: 'Acordo transforma sociedade em parceira.' },
+                { id: 'permanencia', nome: '🔍 Manter fiscalização cidadã', desc: 'Continuidade do Trato', efeitos: { saude: +15, colab: +8, part: +15 }, local: 'centrinho', narrativa: 'Permanência garante conquistas.' },
+                { id: 'legado', nome: '📚 Documentar caso como precedente', desc: 'Relatório sobre processo', efeitos: { saude: +8, colab: +10, part: +18 }, local: 'centrinho', narrativa: 'Documentação vira referência.' },
+                { id: 'protesto_final', nome: '📢 Protesto por cumprimento total', desc: 'Mobilização final', efeitos: { saude: +10, colab: -8, part: +18 }, local: 'dunas', narrativa: 'Pressão garante execução.' }
+            ],
+            mp: [
+                { id: 'homologacao', nome: '✅ Homologar acordos', desc: 'Valida pactos judicialmente', efeitos: { saude: +12, colab: +15, part: +12 }, local: 'centrinho', narrativa: 'Homologação dá força jurídica.' },
+                { id: 'indenizacao', nome: '💰 Consolidar indenização de R$ 10M', desc: 'Dano moral revertido em obras', efeitos: { saude: +15, colab: -5, part: +10 }, local: 'dunas', narrativa: 'Indenização financia recuperação.' },
+                { id: 'monitoramento_mp', nome: '📊 Criar observatório permanente', desc: 'Fiscalização indefinida', efeitos: { saude: +12, colab: +8, part: +12 }, local: 'centrinho', narrativa: 'Observatório previne retrocessos.' },
+                { id: 'precedente', nome: '📜 Propor precedente nacional', desc: 'MPF leva caso ao CNJ', efeitos: { saude: +8, colab: +10, part: +18 }, local: 'centrinho', narrativa: 'Caso vira referência nacional.' }
+            ],
+            gestor_publico: [
+                { id: 'cumprimento_total', nome: '✅ Cumprimento integral', desc: 'Executa todas determinações', efeitos: { saude: +20, colab: +18, part: +10 }, local: 'dunas', narrativa: 'Cumprimento restaura confiança.' },
+                { id: 'emissario', nome: '🌊 Apresentar projeto de emissário', desc: 'Solução: emissário submarino', efeitos: { saude: +15, colab: +10, part: +8 }, local: 'porto', narrativa: 'Solução de longo prazo.' },
+                { id: 'regularizacao', nome: '🏘️ Programa de regularização urbana', desc: 'Critérios ambientais', efeitos: { saude: +12, colab: +12, part: +15 }, local: 'centrinho', narrativa: 'Regularização integra saneamento.' },
+                { id: 'retardamento', nome: '⏳ Adiar decisões definitivas', desc: 'Pede mais prazo', efeitos: { saude: -8, colab: -15, part: -8 }, local: 'dunas', narrativa: 'Retardamento gera desgaste.' }
+            ]
+        }
+    }
+];
+
+const STRATEGY_EFFECTS = {
+    colaborativa: { saude: +3, colab: +8, part: +5 },
+    diretiva: { saude: +8, colab: 0, part: +3 },
+    competitiva: { saude: +10, colab: -8, part: 0 }
+};
+
+// ============================================================
+// ESTADO DO JOGO
+// ============================================================
+let state = {
+    persona: null,
+    currentRound: 0,
+    saude: 25,
+    colab: 40,
+    part: 30,
+    history: [],
+    selectedAction: null,
+    selectedStrategy: null,
+    acoesRealizadas: []
+};
+
+const STORAGE_KEY = 'governa_lagoa_save_v2';
+
+function saveGame() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function loadGame() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) { state = JSON.parse(saved); return true; }
+    } catch(e) {}
+    return false;
+}
+function clearSave() { localStorage.removeItem(STORAGE_KEY); }
+
+let chart;
+
+// ============================================================
+// NAVEGAÇÃO DE TELAS
+// ============================================================
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + id).classList.add('active');
+    window.scrollTo(0, 0);
+}
+
+// ============================================================
+// TELA 1: SELEÇÃO DE PERSONA
+// ============================================================
+const personaCards = document.querySelectorAll('.persona-card');
+const startBtn = document.getElementById('startBtn');
+const selectionStatus = document.getElementById('selectionStatus');
+
+selectionStatus.classList.add('show');
+
+personaCards.forEach(card => {
+    card.addEventListener('click', () => {
+        personaCards.forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        state.persona = card.dataset.persona;
+        
+        const personaInfo = PERSONAS_INFO[state.persona];
+        selectionStatus.innerHTML = `✅ <strong>${personaInfo.emoji} ${personaInfo.nome}</strong> selecionado(a). Clique em "Começar Jornada" para iniciar.`;
+        selectionStatus.classList.add('success');
+    });
+});
+
+startBtn.addEventListener('click', () => {
+    if (!state.persona) {
+        selectionStatus.innerHTML = '⚠️ <strong>Atenção:</strong> Você precisa escolher uma persona antes de começar.';
+        selectionStatus.classList.remove('success');
+        selectionStatus.classList.add('show');
+        selectionStatus.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    showScreen('game');
+    renderRound();
+    atualizarMapaJogo();
+});
+
+// ============================================================
+// TELA 2: JOGO COM MAPA
+// ============================================================
+function clamp(v, min=0, max=100) { return Math.max(min, Math.min(max, v)); }
+
+function getBarColor(value) {
+    if (value >= 70) return '#16a34a';
+    if (value >= 40) return '#f59e0b';
+    return '#dc2626';
+}
+
+function getCorAgua(saude) {
+    if (saude >= 70) return '#40E0D0'; // Turquesa - saudável
+    if (saude >= 50) return '#58D68D'; // Verde - moderado
+    if (saude >= 40) return '#9ACD32'; // Verde-amarelo - atenção
+    if (saude >= 25) return '#D4AC0D'; // Amarelo-escuro - crítico
+    return '#8B7355'; // Marrom - muito crítico
+}
+
+function renderIndicators() {
+    document.getElementById('valSaude').innerText = state.saude;
+    document.getElementById('valColab').innerText = state.colab;
+    document.getElementById('valPart').innerText = state.part;
+    
+    const fillSaude = document.getElementById('fillSaude');
+    fillSaude.style.width = state.saude + '%';
+    fillSaude.style.background = getBarColor(state.saude);
+    
+    const fillColab = document.getElementById('fillColab');
+    fillColab.style.width = state.colab + '%';
+    fillColab.style.background = getBarColor(state.colab);
+    
+    const fillPart = document.getElementById('fillPart');
+    fillPart.style.width = state.part + '%';
+    fillPart.style.background = getBarColor(state.part);
+}
+
+function atualizarMapaJogo() {
+    const root = document.documentElement;
+    const corAgua = getCorAgua(state.saude);
+    root.style.setProperty('--cor-agua', corAgua);
+    
+    // Mostrar/esconder ícones dinâmicos
+    if (state.saude >= 60) {
+        document.getElementById('icone-peixes').classList.add('show');
+    } else {
+        document.getElementById('icone-peixes').classList.remove('show');
+    }
+    
+    // Verificar ações realizadas e mostrar ícones correspondentes
+    const acoes = state.acoesRealizadas;
+    
+    if (acoes.includes('lagoa_viva') || acoes.includes('executar_lagoa_viva')) {
+        document.getElementById('icone-obras').classList.add('show');
+    } else {
+        document.getElementById('icone-obras').classList.remove('show');
+    }
+    
+    if (acoes.includes('viveiros') || acoes.includes('viveiros_gestor') || acoes.includes('plantio')) {
+        document.getElementById('icone-viveiros').classList.add('show');
+    } else {
+        document.getElementById('icone-viveiros').classList.remove('show');
+    }
+    
+    if (acoes.includes('trato') || acoes.includes('fiscalizacao_c')) {
+        document.getElementById('icone-trato').classList.add('show');
+    } else {
+        document.getElementById('icone-trato').classList.remove('show');
+    }
+    
+    // Atualizar marcadores de poluição/melhoria
+    document.querySelectorAll('.map-marker').forEach(marker => {
+        const local = marker.dataset.local;
+        marker.classList.remove('poluicao', 'melhoria');
+        
+        // Verificar se há ações negativas recentes neste local
+        const acoesNegativas = acoes.filter(a => ACAO_PARA_LOCAL[a] === local);
+        const ultimaAcao = acoesNegativas[acoesNegativas.length - 1];
+        
+        if (ultimaAcao) {
+            const acaoData = getAcaoById(ultimaAcao);
+            if (acaoData && acaoData.efeitos.saude < 0) {
+                marker.classList.add('poluicao');
+            } else if (acaoData && acaoData.efeitos.saude > 10) {
+                marker.classList.add('melhoria');
+            }
+        }
+    });
+}
+
+function getAcaoById(id) {
+    for (let rodada of RODADAS) {
+        for (let persona in rodada.acoes) {
+            const acao = rodada.acoes[persona].find(a => a.id === id);
+            if (acao) return acao;
+        }
+    }
+    return null;
+}
+
+function showStakeholders(local) {
+    const popup = document.getElementById('stakeholderPopup');
+    const dados = STAKEHOLDERS_POR_LOCAL[local];
+    
+    if (!dados) return;
+    
+    document.getElementById('popupTitle').innerHTML = `📍 ${dados.nome}`;
+    
+    const lista = document.getElementById('popupStakeholders');
+    lista.innerHTML = dados.stakeholders.map(s => `<li>${s}</li>`).join('');
+    
+    popup.classList.add('show');
+}
+
+function closeStakeholderPopup() {
+    document.getElementById('stakeholderPopup').classList.remove('show');
+}
+
+function renderRound() {
+    const round = RODADAS[state.currentRound];
+    const personaInfo = PERSONAS_INFO[state.persona];
+    
+    document.getElementById('roundTitle').innerText = `Rodada ${round.id}: ${round.titulo}`;
+    document.getElementById('roundPeriod').innerText = round.periodo;
+    document.getElementById('personaBadge').innerText = `${personaInfo.emoji} ${personaInfo.nome}`;
+    document.getElementById('contextTitle').innerText = `📍 ${round.titulo}`;
+    document.getElementById('contextText').innerText = round.contexto;
+    
+    const stratContainer = document.getElementById('strategyContainer');
+    stratContainer.style.display = state.persona === 'juiz' ? 'block' : 'none';
+    state.selectedStrategy = null;
+    document.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('selected'));
+    
+    renderActions();
+    renderIndicators();
+    updateAdvanceButton();
+}
+
+function renderActions() {
+    const round = RODADAS[state.currentRound];
+    const acoes = round.acoes[state.persona];
+    const grid = document.getElementById('actionsGrid');
+    grid.innerHTML = '';
+    
+    acoes.forEach(acao => {
+        const card = document.createElement('div');
+        card.className = 'action-card';
+        card.dataset.id = acao.id;
+        
+        const effectsHtml = Object.entries(acao.efeitos).map(([k, v]) => {
+            if (v === 0) return '';
+            const label = k === 'saude' ? '🌊' : k === 'colab' ? '🤝' : '🗣️';
+            const cls = v > 0 ? 'effect-pos' : 'effect-neg';
+            const sign = v > 0 ? '+' : '';
+            return `<span class="${cls}">${label}${sign}${v}</span>`;
+        }).join('');
+        
+        const localInfo = acao.local ? `<div style="font-size:0.75rem; color:#64748b; margin-top:0.3rem;">📍 Afeta: ${acao.local}</div>` : '';
+        
+        card.innerHTML = `
+            <h4>${acao.nome}</h4>
+            <div class="desc">${acao.desc}</div>
+            <div class="effects">${effectsHtml}</div>
+            ${localInfo}
+        `;
+        
+        card.addEventListener('click', () => selectAction(acao.id));
+        grid.appendChild(card);
+    });
+}
+
+function selectAction(id) {
+    state.selectedAction = id;
+    document.querySelectorAll('.action-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.id === id);
+    });
+    updateAdvanceButton();
+}
+
+document.querySelectorAll('.strategy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.selectedStrategy = btn.dataset.strategy;
+        updateAdvanceButton();
+    });
+});
+
+function updateAdvanceButton() {
+    const btn = document.getElementById('advanceBtn');
+    const needsStrategy = state.persona === 'juiz';
+    const hasAction = state.selectedAction !== null;
+    const hasStrategy = !needsStrategy || state.selectedStrategy !== null;
+    btn.disabled = !(hasAction && hasStrategy);
+}
+
+document.getElementById('advanceBtn').addEventListener('click', () => {
+    applyAction();
+});
+
+function applyAction() {
+    const round = RODADAS[state.currentRound];
+    const acao = round.acoes[state.persona].find(a => a.id === state.selectedAction);
+    if (!acao) return;
+    
+    let deltaSaude = acao.efeitos.saude;
+    let deltaColab = acao.efeitos.colab;
+    let deltaPart = acao.efeitos.part;
+    
+    if (state.persona === 'juiz' && state.selectedStrategy) {
+        const strat = STRATEGY_EFFECTS[state.selectedStrategy];
+        deltaSaude += strat.saude;
+        deltaColab += strat.colab;
+        deltaPart += strat.part;
+    }
+    
+    state.saude = clamp(state.saude + deltaSaude);
+    state.colab = clamp(state.colab + deltaColab);
+    state.part = clamp(state.part + deltaPart);
+    
+    // Registrar ação realizada
+    state.acoesRealizadas.push(acao.id);
+    
+    state.history.push({
+        round: round.id,
+        periodo: round.periodo,
+        acao: acao.nome,
+        saude: state.saude,
+        colab: state.colab,
+        part: state.part,
+        narrativa: acao.narrativa,
+        local: acao.local
+    });
+    
+    showNarrative(acao.nome, acao.narrativa, acao.local);
+    
+    state.currentRound++;
+    state.selectedAction = null;
+    state.selectedStrategy = null;
+    
+    saveGame();
+    updateChart();
+    renderHistory();
+    renderIndicators();
+    atualizarMapaJogo();
+    
+    setTimeout(() => {
+        if (state.saude <= 0 || state.colab <= 0 || state.part <= 0) {
+            endGame('derrota');
+        } else if (state.currentRound >= RODADAS.length) {
+            endGame('concluido');
+        } else {
+            renderRound();
+        }
+    }, 3000);
+}
+
+function showNarrative(title, text, local) {
+    const popup = document.getElementById('narrativePopup');
+    const localNome = local ? ` (${local.replace('_', ' ').toUpperCase()})` : '';
+    document.getElementById('narrativeTitle').innerText = `📖 ${title}${localNome}`;
+    document.getElementById('narrativeText').innerText = text;
+    popup.classList.add('show');
+    setTimeout(() => popup.classList.remove('show'), 4000);
+}
+
+function renderHistory() {
+    const body = document.getElementById('historyBody');
+    if (state.history.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Aguardando primeira decisão...</td></tr>';
+        return;
+    }
+    body.innerHTML = state.history.slice().reverse().map(h => `
+        <tr>
+            <td>${h.round}</td>
+            <td>${h.periodo}</td>
+            <td style="text-align:left; font-size:0.8rem;">${h.acao}</td>
+            <td><strong>${h.saude}</strong></td>
+            <td><strong>${h.colab}</strong></td>
+            <td><strong>${h.part}</strong></td>
+        </tr>
+    `).join('');
+}
+
+function initChart() {
+    const ctx = document.getElementById('evolutionChart').getContext('2d');
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Início'],
+            datasets: [
+                { label: '🌊 Saúde', data: [25], borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.1)', tension: 0.3 },
+                { label: '🤝 Colaboração', data: [40], borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,0.1)', tension: 0.3 },
+                { label: '🗣️ Participação', data: [30], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.3 }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: { min: 0, max: 100, title: { display: true, text: 'Indicador (0-100)' } }
+            }
+        }
+    });
+}
+
+function updateChart() {
+    if (!chart) return;
+    chart.data.labels = ['Início', ...state.history.map(h => `R${h.round}`)];
+    chart.data.datasets[0].data = [25, ...state.history.map(h => h.saude)];
+    chart.data.datasets[1].data = [40, ...state.history.map(h => h.colab)];
+    chart.data.datasets[2].data = [30, ...state.history.map(h => h.part)];
+    chart.update();
+}
+
+// ============================================================
+// FIM DE JOGO
+// ============================================================
+function endGame(tipo) {
+    const modal = document.getElementById('finalModal');
+    const trophy = document.getElementById('finalTrophy');
+    const title = document.getElementById('finalTitle');
+    const subtitle = document.getElementById('finalSubtitle');
+    const outcomeBox = document.getElementById('outcomeBox');
+    const outcomeTitle = document.getElementById('outcomeTitle');
+    const outcomeText = document.getElementById('outcomeText');
+    
+    document.getElementById('finalSaude').innerText = state.saude;
+    document.getElementById('finalColab').innerText = state.colab;
+    document.getElementById('finalPart').innerText = state.part;
+    
+    if (tipo === 'derrota') {
+        trophy.innerText = '💔';
+        title.innerText = 'Processo Colapsou';
+        subtitle.innerText = 'Um dos pilares do processo estrutural chegou a zero.';
+        outcomeBox.className = 'outcome-box outcome-defeat';
+        outcomeTitle.innerText = '❌ Derrota';
+        let motivo = '';
+        if (state.saude <= 0) motivo = 'A Saúde da Lagoa colapsou — o dano ambiental tornou-se irreversível.';
+        else if (state.colab <= 0) motivo = 'A Colaboração zerou — os atores abandonaram a mesa de negociações.';
+        else motivo = 'A Participação Social zerou — a sociedade civil desistiu do litígio.';
+        outcomeText.innerText = motivo + ' No caso real, o equilíbrio entre os três pilares foi essencial.';
+    } else {
+        if (state.saude >= 70) {
+            trophy.innerText = '🏆';
+            title.innerText = 'Vitória Estrutural!';
+            subtitle.innerText = 'Você conduziu o processo com equilíbrio e eficácia.';
+            outcomeBox.className = 'outcome-box outcome-victory';
+            outcomeTitle.innerText = '✅ Vitória Plena';
+            outcomeText.innerText = `Saúde da Lagoa em ${state.saude} pontos. Você demonstrou que o processo estrutural transforma conflitos em governança colaborativa.`;
+        } else if (state.saude >= 50) {
+            trophy.innerText = '🥈';
+            title.innerText = 'Avanço Parcial';
+            subtitle.innerText = 'O processo avançou, mas a Lagoa ainda precisa de mais.';
+            outcomeBox.className = 'outcome-box outcome-partial';
+            outcomeTitle.innerText = '⚠️ Resultado Parcial';
+            outcomeText.innerText = `Saúde em ${state.saude} pontos (meta: 70). Em 2026 o processo segue com mutirões e debate sobre emissário.`;
+        } else {
+            trophy.innerText = '⚠️';
+            title.innerText = 'Resultado Insuficiente';
+            subtitle.innerText = 'A Lagoa ainda está em situação crítica.';
+            outcomeBox.className = 'outcome-box outcome-partial';
+            outcomeTitle.innerText = '⚠️ Abaixo da Meta';
+            outcomeText.innerText = `Saúde em ${state.saude} pontos. Reavalie a estratégia e tente novamente.`;
+        }
+    }
+    
+    modal.classList.add('show');
+}
+
+// ============================================================
+// RESET
+// ============================================================
+document.getElementById('resetBtn').addEventListener('click', () => {
+    if (!confirm('Reiniciar o jogo? Todo o progresso será perdido.')) return;
+    clearSave();
+    state = { persona: null, currentRound: 0, saude: 25, colab: 40, part: 30, history: [], selectedAction: null, selectedStrategy: null, acoesRealizadas: [] };
+    personaCards.forEach(c => c.classList.remove('selected'));
+    selectionStatus.innerHTML = '👆 Clique em uma das personas acima para começar';
+    selectionStatus.classList.remove('success');
+    selectionStatus.classList.add('show');
+    showScreen('intro');
+    if (chart) {
+        chart.data.labels = ['Início'];
+        chart.data.datasets[0].data = [25];
+        chart.data.datasets[1].data = [40];
+        chart.data.datasets[2].data = [30];
+        chart.update();
+    }
+    // Resetar mapa
+    document.documentElement.style.setProperty('--cor-agua', '#9ACD32');
+    document.querySelectorAll('.dynamic-icon').forEach(icon => icon.classList.remove('show'));
+    document.querySelectorAll('.map-marker').forEach(m => m.classList.remove('poluicao', 'melhoria'));
+});
+
+// ============================================================
+// INICIALIZAÇÃO
+// ============================================================
+const hasSave = loadGame();
+initChart();
+
+if (hasSave && state.persona && state.currentRound > 0) {
+    showScreen('game');
+    renderRound();
+    updateChart();
+    renderHistory();
+    atualizarMapaJogo();
+} else if (hasSave && state.persona) {
+    personaCards.forEach(c => {
+        if (c.dataset.persona === state.persona) {
+            c.classList.add('selected');
+            const personaInfo = PERSONAS_INFO[state.persona];
+            selectionStatus.innerHTML = `✅ <strong>${personaInfo.emoji} ${personaInfo.nome}</strong> selecionado(a).`;
+            selectionStatus.classList.add('success');
+        }
+    });
+}
+</script>
+</body>
+</html>
